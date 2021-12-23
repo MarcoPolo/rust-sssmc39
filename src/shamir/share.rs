@@ -29,6 +29,8 @@ lazy_static! {
 		let mut retval = HashMap::new();
 		for (i, item) in WORDLIST.iter().enumerate() {
 			retval.insert(item.to_owned(), i);
+			// Also insert the unique 4 character prefix
+			retval.insert(item[0..4].to_owned(), i);
 		}
 		retval
 	};
@@ -396,6 +398,11 @@ mod tests {
 		let dec_share = Share::from_mnemonic(&m)?;
 		println!("decoded share: {:?}", dec_share);
 		assert_eq!(share, dec_share);
+
+		let short_words: Vec<String> = expected_res.iter().map(|s| s[0..4].to_owned()).collect();
+		let share_from_short_words = Share::from_mnemonic(&short_words)?;
+		assert_eq!(share, share_from_short_words);
+
 		Ok(())
 	}
 }
