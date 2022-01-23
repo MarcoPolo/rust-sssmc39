@@ -14,6 +14,8 @@
 
 //! Functions and structs that specifically define the SLIPS-0039 scheme
 
+use prettytable::{cell, row};
+
 use super::{Share, Splitter};
 use crate::error::{Error, ErrorKind};
 
@@ -55,6 +57,31 @@ impl Default for GroupShare {
 	}
 }
 
+impl fmt::Display for Share {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let m = self.to_mnemonic().unwrap();
+		let mut table = prettytable::Table::new();
+
+		table.add_row(row!["", "1", "2", "3", "4"]);
+		let iter = m.chunks(4).enumerate();
+		for (idx, row) in iter {
+			let idx = idx as u64;
+			let n1 = row.get(0).map(|s| s.as_str()).unwrap_or("");
+			let n2 = row.get(1).map(|s| s.as_str()).unwrap_or("");
+			let n3 = row.get(2).map(|s| s.as_str()).unwrap_or("");
+			let n4 = row.get(3).map(|s| s.as_str()).unwrap_or("");
+			table.add_row(row![format!("{}", idx), n1, n2, n3, n4]);
+		}
+
+		let mut out: Vec<u8> = Vec::new();
+		table.print(&mut out).unwrap();
+		let string = String::from_utf8(out).unwrap();
+		write!(f, "{}", string)?;
+
+		Ok(())
+	}
+}
+
 impl fmt::Display for GroupShare {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		writeln!(
@@ -65,11 +92,15 @@ impl fmt::Display for GroupShare {
 			self.member_threshold,
 			self.member_shares.len()
 		)?;
-		for s in &self.member_shares {
-			for w in s.to_mnemonic().unwrap() {
-				write!(f, "{} ", w)?;
-			}
-			writeln!(f)?;
+		for (i, s) in self.member_shares.iter().enumerate() {
+			writeln!(
+				f,
+				"Group {}. Share {} of {}: ",
+				self.group_index + 1,
+				i + 1,
+				self.member_shares.len()
+			)?;
+			writeln!(f, "{} ", s)?;
 		}
 		Ok(())
 	}
@@ -135,7 +166,9 @@ pub fn generate_mnemonics(
 	}
 
 	if master_secret.len() % 2 != 0 {
-		return Err(ErrorKind::Value("The length of the master secret in bytes must be an even number".to_string()))?;
+		return Err(ErrorKind::Value(
+			"The length of the master secret in bytes must be an even number".to_string(),
+		))?;
 	}
 
 	if group_threshold as usize > groups.len() {
@@ -226,10 +259,7 @@ pub fn generate_mnemonics_random(
 /// mnemonics: List of mnemonics.
 /// passphrase: The passphrase used to encrypt the master secret.
 /// return: The master secret.
-pub fn combine_mnemonics(
-	mnemonics: &[Vec<String>],
-	passphrase: &str,
-) -> Result<Vec<u8>, Error> {
+pub fn combine_mnemonics(mnemonics: &[Vec<String>], passphrase: &str) -> Result<Vec<u8>, Error> {
 	let group_shares = decode_mnemonics(mnemonics)?;
 	let mut shares = vec![];
 	for mut gs in group_shares {
@@ -266,7 +296,9 @@ fn decode_mnemonics(mnemonics: &[Vec<String>]) -> Result<Vec<GroupShare>, Error>
 	let check_len = mnemonics[0].len();
 	for m in mnemonics {
 		if m.len() != check_len {
-			return Err(ErrorKind::Mnemonic("Invalid set of mnemonics. All mnemonics must have the same length.".to_string()))?;
+			return Err(ErrorKind::Mnemonic(
+				"Invalid set of mnemonics. All mnemonics must have the same length.".to_string(),
+			))?;
 		}
 		shares.push(Share::from_mnemonic(&m)?);
 	}
@@ -283,10 +315,16 @@ fn decode_mnemonics(mnemonics: &[Vec<String>]) -> Result<Vec<GroupShare>, Error>
 			)))?;
 		}
 		if s.group_threshold != check_share.group_threshold {
-			return Err(ErrorKind::Mnemonic("Invalid set of mnemonics. All mnemonics must have the same group threshold".to_string()))?;
+			return Err(ErrorKind::Mnemonic(
+				"Invalid set of mnemonics. All mnemonics must have the same group threshold"
+					.to_string(),
+			))?;
 		}
 		if s.group_count != check_share.group_count {
-			return Err(ErrorKind::Mnemonic("Invalid set of mnemonics. All mnemonics must have the same group count".to_string()))?;
+			return Err(ErrorKind::Mnemonic(
+				"Invalid set of mnemonics. All mnemonics must have the same group count"
+					.to_string(),
+			))?;
 		}
 	}
 
@@ -309,7 +347,6 @@ fn decode_mnemonics(mnemonics: &[Vec<String>]) -> Result<Vec<GroupShare>, Error>
 		}
 	}
 
-
 	if group_index_map.len() < check_share.group_threshold as usize {
 		return Err(ErrorKind::Mnemonic(format!(
 			"Insufficient number of mnemonic groups ({}). The required number \
@@ -327,7 +364,10 @@ fn decode_mnemonics(mnemonics: &[Vec<String>]) -> Result<Vec<GroupShare>, Error>
 		.collect();
 
 	if groups.len() < check_share.group_threshold as usize {
-		return Err(ErrorKind::Mnemonic("Insufficient number of groups with member counts that meet member threshold.".to_string()))?;
+		return Err(ErrorKind::Mnemonic(
+			"Insufficient number of groups with member counts that meet member threshold."
+				.to_string(),
+		))?;
 	}
 
 	// TODO: Should probably return info making problem mnemonics easier to identify
@@ -342,7 +382,9 @@ fn decode_mnemonics(mnemonics: &[Vec<String>]) -> Result<Vec<GroupShare>, Error>
 		let test_share = g.member_shares[0].clone();
 		for ms in g.member_shares.iter() {
 			if test_share.member_threshold != ms.member_threshold {
-				return Err(ErrorKind::Mnemonic("Mismatching member thresholds".to_string()))?;
+				return Err(ErrorKind::Mnemonic(
+					"Mismatching member thresholds".to_string(),
+				))?;
 			}
 		}
 	}
@@ -377,7 +419,6 @@ mod tests {
 		let result = combine_mnemonics(&flatten_mnemonics(&mns)?, "")?;
 		println!("Single 3 of 5 Decoded: {:?}", result);
 		assert_eq!(result, master_secret);
-
 
 		// Test a few distinct groups
 		let mns = generate_mnemonics(
@@ -423,7 +464,7 @@ mod tests {
 		input.push(two.split(' ').map(|s| s.to_owned()).collect());
 		input.push(three.split(' ').map(|s| s.to_owned()).collect());
 		input.push(four.split(' ').map(|s| s.to_owned()).collect());
-		input.push(five.split(' ' ).map(|s| s.to_owned()).collect());
+		input.push(five.split(' ').map(|s| s.to_owned()).collect());
 		let _result = combine_mnemonics(&input, "TREZOR")?;
 
 		Ok(())
@@ -447,11 +488,9 @@ mod tests {
 		input.push(two.split(' ').map(|s| s.to_owned()).collect());
 		input.push(three.split(' ').map(|s| s.to_owned()).collect());
 		input.push(four.split(' ').map(|s| s.to_owned()).collect());
-		input.push(five.split(' ' ).map(|s| s.to_owned()).collect());
+		input.push(five.split(' ').map(|s| s.to_owned()).collect());
 		let result = combine_mnemonics(&input, "")?;
 		println!("Result: {}", String::from_utf8(result).unwrap());
 		Ok(())
 	}
 }
-
-
